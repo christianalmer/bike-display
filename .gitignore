@@ -1,0 +1,11 @@
+# Real credentials — never commit (use bike_display/secrets.h.example)
+bike_display/secrets.h
+
+# Claude Code local settings (approved commands may embed secrets)
+.claude/
+
+# Build artifacts
+bike_display/build/
+preview/*.png
+
+.DS_Store
