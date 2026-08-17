@@ -6,7 +6,7 @@
  *
  * Behavior:
  *   - Polls the public GBFS station_status feed once per minute
- *   - Shows total bikes available big, e-bikes/docks split below
+ *   - Shows e-bikes available big, classic bikes below
  *   - Fast DU refresh when a displayed count changes
  *   - Full GC refresh every 5 fast refreshes to clear ghosting
  *   - "No data" if fetches keep failing (stale counts are worse than none)
@@ -64,10 +64,10 @@ uint8_t epdBuf[EPD_BUF_BYTES];
 // ======================= STATE =======================
 int      bikesAvail  = -1;  // total incl. e-bikes; -1 = no data yet
 int      ebikesAvail = 0;
-int      docksAvail  = 0;
+int      docksAvail  = 0;   // fetched for logging, not displayed
 uint32_t lastGoodMs  = 0;   // millis() of last successful fetch
 bool     haveData    = false;
-int      lastShownBikes = -999, lastShownEbikes = -999, lastShownDocks = -999;
+int      lastShownEbikes = -999, lastShownClassic = -999;
 uint8_t  partialsSinceFull = 0;
 uint32_t lastFetchMs = 0;
 
@@ -162,7 +162,7 @@ bool fetchStationStatus() {
 }
 
 // ======================= RENDER =======================
-// Landscape 250x122: bike badge left, big bike count, e-bikes/docks below.
+// Landscape 250x122: bike badge left, big e-bike count, classic bikes below.
 // Layout constants mirror preview/preview.py draw_layout — keep in sync.
 void drawBadge() {
   const int16_t BX = 8, BY = 30, BW_ = 62, BH = 62;
@@ -171,40 +171,37 @@ void drawBadge() {
                     BIKE_ICON, BIKE_ICON_W, BIKE_ICON_H, 0);
 }
 
-void render(int bikes, int ebikes, int docks, bool fullRefresh) {
+void render(int ebikes, int classic, bool fullRefresh) {
   const int16_t BASE = 77;      // shared baseline for the big number
   const int16_t SUB_BASE = 112; // bottom info line baseline
   const int16_t LEFT = 84;      // left edge of the text column
-                                // (widest sub-line "18 e-bikes, 12 docks" = 165px)
 
   canvas.fillScreen(0);  // white
   canvas.setTextColor(1);
   drawBadge();
 
-  if (bikes < 0) {
+  if (ebikes < 0) {
     canvas.setFont(&FreeSansBold12pt7b);
     canvas.setCursor(LEFT, BASE);
     canvas.print("No data");
-  } else if (bikes == 0) {
+  } else if (ebikes == 0) {
     canvas.setFont(&FreeSansBold12pt7b);
     canvas.setCursor(LEFT, BASE);
-    canvas.print("No bikes");
+    canvas.print("No e-bikes");
   } else {
     canvas.setFont(&FreeSansBold24pt7b);
     canvas.setCursor(LEFT, BASE);
-    canvas.print(bikes);
+    canvas.print(ebikes);
     canvas.setFont(&FreeSansBold12pt7b);
     canvas.setCursor(canvas.getCursorX() + 6, BASE);
-    canvas.print("bikes");
+    canvas.print(ebikes == 1 ? "e-bike" : "e-bikes");
   }
 
   canvas.setFont(&FreeSans9pt7b);
   canvas.setCursor(LEFT, SUB_BASE);
-  if (bikes >= 0) {
-    canvas.print(ebikes);
-    canvas.print(ebikes == 1 ? " e-bike, " : " e-bikes, ");
-    canvas.print(docks);
-    canvas.print(docks == 1 ? " dock" : " docks");
+  if (ebikes >= 0) {
+    canvas.print(classic);
+    canvas.print(classic == 1 ? " bike" : " bikes");
   } else {
     canvas.print(STATION_LABEL);
   }
@@ -227,16 +224,17 @@ void render(int bikes, int ebikes, int docks, bool fullRefresh) {
 void updateDisplay(bool forceFull) {
   // Fall back to "No data" when fetches have been failing for a while;
   // a stale count is worse than an honest blank.
-  int bikes = bikesAvail, ebikes = ebikesAvail, docks = docksAvail;
-  if (!haveData || (millis() - lastGoodMs) > STALE_AFTER_MS) bikes = -1;
+  int ebikes = ebikesAvail, classic = bikesAvail - ebikesAvail;
+  if (!haveData || (millis() - lastGoodMs) > STALE_AFTER_MS) {
+    ebikes = -1;
+    classic = 0;
+  }
 
-  if (forceFull || bikes != lastShownBikes || ebikes != lastShownEbikes ||
-      docks != lastShownDocks) {
+  if (forceFull || ebikes != lastShownEbikes || classic != lastShownClassic) {
     bool full = forceFull || partialsSinceFull >= FULL_REFRESH_EVERY;
-    render(bikes, ebikes, docks, full);
-    lastShownBikes = bikes;
+    render(ebikes, classic, full);
     lastShownEbikes = ebikes;
-    lastShownDocks = docks;
+    lastShownClassic = classic;
   }
 }
 

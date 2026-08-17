@@ -23,11 +23,11 @@ def draw_icon(c: Canvas, x0, y0, color):
                 c.set(x0 + x, y0 + y, color)
 
 
-def draw_layout(c: Canvas, bikes, ebikes, docks, fetch_ok=True):
+def draw_layout(c: Canvas, ebikes, classic, fetch_ok=True):
     """The layout in firmware render() — keep in sync with bike_display.ino.
 
-    Badge 62x62 at x=8 with white bike glyph, text column at x=84
-    (widest sub-line "18 e-bikes, 12 docks" is 165px -> fits 250-84)."""
+    Badge 62x62 at x=8 with white bike glyph, text column at x=84.
+    Big number = e-bikes, sub-line = classic bikes. ebikes < 0 = no data."""
     BX, BY, BW_, BH = 8, 30, 62, 62
     BASE = 77          # shared baseline for the big number
     SUB_BASE = 112     # bottom info line baseline
@@ -36,27 +36,26 @@ def draw_layout(c: Canvas, bikes, ebikes, docks, fetch_ok=True):
     c.fill_round_rect(BX, BY, BW_, BH, 8, 1)
     draw_icon(c, BX + (BW_ - ICON_W) // 2, BY + (BH - ICON_H) // 2, 0)
 
-    if bikes < 0:
+    if ebikes < 0:
         c.text("FreeSansBold12pt7b", LEFT, BASE, "No data", 1)
-    elif bikes == 0:
-        c.text("FreeSansBold12pt7b", LEFT, BASE, "No bikes", 1)
+    elif ebikes == 0:
+        c.text("FreeSansBold12pt7b", LEFT, BASE, "No e-bikes", 1)
     else:
-        x = c.text("FreeSansBold24pt7b", LEFT, BASE, str(bikes), 1)
-        c.text("FreeSansBold12pt7b", x + 6, BASE, "bikes", 1)
+        x = c.text("FreeSansBold24pt7b", LEFT, BASE, str(ebikes), 1)
+        c.text("FreeSansBold12pt7b", x + 6, BASE,
+               "e-bike" if ebikes == 1 else "e-bikes", 1)
 
-    if bikes >= 0:
-        eb = "e-bike" if ebikes == 1 else "e-bikes"
-        dk = "dock" if docks == 1 else "docks"
-        c.text("FreeSans9pt7b", LEFT, SUB_BASE,
-               f"{ebikes} {eb}, {docks} {dk}", 1)
+    if ebikes >= 0:
+        bk = "bike" if classic == 1 else "bikes"
+        c.text("FreeSans9pt7b", LEFT, SUB_BASE, f"{classic} {bk}", 1)
     else:
         c.text("FreeSans9pt7b", LEFT, SUB_BASE, "<station>", 1)
 
 
 if __name__ == "__main__":
     variants = []
-    # (bikes_total, ebikes, docks): normal, single digit, zero, fetch fail
-    for args in [(18, 12, 12), (3, 1, 20), (0, 0, 23), (-1, 0, 0)]:
+    # (ebikes, classic_bikes): normal, single, zero e-bikes, fetch fail
+    for args in [(12, 6), (1, 1), (0, 4), (-1, 0)]:
         c = Canvas()
         draw_layout(c, *args)
         variants.append(c)
