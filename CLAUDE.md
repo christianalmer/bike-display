@@ -14,9 +14,8 @@ done and verified; don't rewrite it.**
 - Panel: 122x250 B/W, SPI; USB-C powered
 - Pins, same on ALL board revisions: SCK 12, MOSI 11, RST 10, DC 13, CS 14, BUSY 9, panel power 7 (must be HIGH), power LED 19. Elecrow demos bit-bang these; vendored driver does too
 - Two panel revisions exist with identical wiring: older = **SSD1680** (this is what the bus-display unit was), newer = **JD79661** (UC8151-style, BUSY inverted). **If this project uses a NEW CrowPanel unit, determine the revision first**: flash and watch serial — SSD1680 full refresh takes ~2.1s; on the wrong driver the panel gives zero BUSY response ("refresh done in 0 ms")
-  - SSD1680 driver: `bike_display/epd1680.{h,cpp}` (active)
-  - JD79661 driver: `bike_display/extras/jd79661/` (swap in if needed; draws via GFXcanvas1 the same way)
-- Partial refresh correctness (SSD1680): RAM 0x26 must hold the on-glass frame; `epd1680.cpp` rewrites it after every refresh (shadow copy in MCU RAM) and sleeps in deep-sleep mode 1. Don't switch to mode-2 sleep or cut panel power between updates. Partial uses the panel's factory OTP Mode-2 waveform (`0x22 = 0xFC`) — GxEPD2 was tried and dropped (its LUT ghosts badly on this glass)
+  - Both drivers live in the shared **crowpanel-epd library** (`~/Documents/Arduino/libraries/crowpanel-epd`, repo github.com/christianalmer/crowpanel-epd): SSD1680 = `<epd1680.h>` (active include), JD79661 = `src/jd79661/` (swap in if needed). Canvas translation = `<epd_canvas.h>` `epdCanvasToPanel()`. Edit the library to change hardware behavior for ALL display projects
+- Partial refresh correctness (SSD1680): RAM 0x26 must hold the on-glass frame; the library's `epd1680.cpp` rewrites it after every refresh (shadow copy in MCU RAM) and sleeps in deep-sleep mode 1. Don't switch to mode-2 sleep or cut panel power between updates. Partial uses the panel's factory OTP Mode-2 waveform (`0x22 = 0xFC`) — GxEPD2 was tried and dropped (its LUT ghosts badly on this glass)
 - USB: CH340K reporting idProduct **0x7522** — macOS needs WCH's CH34xVCPDriver
   (github.com/WCHSoftGroup/ch34xser_macos), approved in System Settings → General →
   Login Items & Extensions → Driver Extensions. Port: `/dev/cu.wchusbserial*`
@@ -54,7 +53,8 @@ done and verified; don't rewrite it.**
    (no timestamps needed), the 511 config. Keep: WiFi/NTP (NTP only if showing a
    clock; otherwise droppable), render pipeline, refresh cadence logic
 3. New layout in `preview/preview.py` first (pixel-accurate, no flashing needed;
-   keep `draw_layout_v2` in sync with firmware `render()`). Old composition:
+   harness imported from the crowpanel-epd library; keep `draw_layout_v2` in sync
+   with firmware `render()`). Old composition:
    badge left / big number / sub-line — likely reusable with a bike glyph instead
    of the "23" badge and "bikes / e-bikes" split
 4. Refresh behavior: bike counts change more often than bus minutes but matter
