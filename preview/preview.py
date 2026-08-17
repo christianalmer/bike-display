@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Pixel-accurate preview of the bus display layout.
+"""Pixel-accurate preview of the bike display layout.
 
 Rendering harness (font parsing, canvas, PNG) lives in the crowpanel-epd
-library; this file holds only the project's layouts. Edit draw_layout_v2,
+library; this file holds only the project's layouts. Edit draw_layout,
 run, look at preview_proposed.png, and mirror final coordinates back into
-render() in bus_display.ino.
+render() in bike_display.ino.
 """
 
 import sys
@@ -12,41 +12,53 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path.home() / "Documents/Arduino/libraries/crowpanel-epd/preview"))
 from epd_preview import Canvas, write_png  # noqa: E402
+from bike_icon import ICON, ICON_W, ICON_H  # noqa: E402
 
 
-def draw_layout_v2(c: Canvas, minutes, minutes2, fetch_ok=True):
-    """The layout in firmware render() — keep in sync with bus_display.ino.
+def draw_icon(c: Canvas, x0, y0, color):
+    """Mirror of GFX drawBitmap(BIKE_ICON) in firmware."""
+    for y, row in enumerate(ICON):
+        for x, v in enumerate(row):
+            if v:
+                c.set(x0 + x, y0 + y, color)
 
-    Centered on the widest state "NOW" (117px): badge 62 + gap 16 + 117 = 195
-    -> badge x = 27, text column x = 105."""
-    BX, BY, BW_, BH = 27, 30, 62, 62
-    BASE = 77          # shared baseline for badge "23" and the big number
+
+def draw_layout(c: Canvas, bikes, ebikes, docks, fetch_ok=True):
+    """The layout in firmware render() — keep in sync with bike_display.ino.
+
+    Badge 62x62 at x=8 with white bike glyph, text column at x=84
+    (widest sub-line "18 e-bikes, 12 docks" is 165px -> fits 250-84)."""
+    BX, BY, BW_, BH = 8, 30, 62, 62
+    BASE = 77          # shared baseline for the big number
     SUB_BASE = 112     # bottom info line baseline
-    LEFT = 105         # left edge of the text column
+    LEFT = 84          # left edge of the text column
 
     c.fill_round_rect(BX, BY, BW_, BH, 8, 1)
-    w23 = c.text_width("FreeSansBold24pt7b", "23")
-    c.text("FreeSansBold24pt7b", BX + (BW_ - w23) // 2, BASE, "23", 0)
+    draw_icon(c, BX + (BW_ - ICON_W) // 2, BY + (BH - ICON_H) // 2, 0)
 
-    if minutes < 0:
-        c.text("FreeSansBold12pt7b", LEFT, BASE, "No buses" if fetch_ok else "No data", 1)
-    elif minutes == 0:
-        c.text("FreeSansBold24pt7b", LEFT, BASE, "NOW", 1)
+    if bikes < 0:
+        c.text("FreeSansBold12pt7b", LEFT, BASE, "No data", 1)
+    elif bikes == 0:
+        c.text("FreeSansBold12pt7b", LEFT, BASE, "No bikes", 1)
     else:
-        x = c.text("FreeSansBold24pt7b", LEFT, BASE, str(minutes), 1)
-        c.text("FreeSansBold12pt7b", x + 6, BASE, "min", 1)
+        x = c.text("FreeSansBold24pt7b", LEFT, BASE, str(bikes), 1)
+        c.text("FreeSansBold12pt7b", x + 6, BASE, "bikes", 1)
 
-    if minutes2 >= 0:
-        c.text("FreeSans9pt7b", LEFT, SUB_BASE, f"next: {minutes2} min", 1)
+    if bikes >= 0:
+        eb = "e-bike" if ebikes == 1 else "e-bikes"
+        dk = "dock" if docks == 1 else "docks"
+        c.text("FreeSans9pt7b", LEFT, SUB_BASE,
+               f"{ebikes} {eb}, {docks} {dk}", 1)
     else:
-        c.text("FreeSans9pt7b", LEFT, SUB_BASE, "Glen Park", 1)
+        c.text("FreeSans9pt7b", LEFT, SUB_BASE, "<station>", 1)
 
 
 if __name__ == "__main__":
     variants = []
-    for args in [(12, 22), (7, -1), (0, 9), (-1, -1)]:
+    # (bikes_total, ebikes, docks): normal, single digit, zero, fetch fail
+    for args in [(18, 12, 12), (3, 1, 20), (0, 0, 23), (-1, 0, 0)]:
         c = Canvas()
-        draw_layout_v2(c, *args)
+        draw_layout(c, *args)
         variants.append(c)
     out = Path(__file__).parent / "preview_proposed.png"
     write_png(out, variants)

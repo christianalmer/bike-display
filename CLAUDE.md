@@ -3,10 +3,11 @@
 E-paper desk device showing how many Lyft/Bay Wheels bikes (and e-bikes) are
 available at a nearby station.
 
-**STATUS: fresh clone of the finished bus-display project
-(github.com/christianalmer/bus-display) — the firmware still shows Muni bus
-departures and needs adapting. See "Adaptation TODO" below. Hardware layer is
-done and verified; don't rewrite it.**
+**STATUS: working, verified on hardware 2026-08-17.** Station: **<station>** (<station-code>, station_id `<station-id>`),
+hardcoded in `bike_display.ino`. This unit is the older **SSD1680** panel
+revision (full refresh measured ~2.4s). Forked from bus-display
+(github.com/christianalmer/bus-display); hardware layer is done and verified —
+don't rewrite it.
 
 ## Hardware (verified working — keep as-is)
 
@@ -27,7 +28,7 @@ done and verified; don't rewrite it.**
 - `arduino-cli compile --fqbn <fqbn> bike_display` from repo root; upload with `-p /dev/cu.wchusbserial*`
 - Libraries: Adafruit GFX, ArduinoJson v7 (both installed)
 - Serial monitor: pyserial with `setDTR(False); setRTS(False)`; pulse RTS True→False to reset
-- Secrets in gitignored `bike_display/secrets.h` (copied from bus-display: real WiFi creds; the 511 key is vestigial here)
+- Secrets in gitignored `bike_display/secrets.h` (copied from bus-display: real WiFi creds; only SSID/pass are used, the leftover 511 key define is harmless)
 
 ## Data source: Bay Wheels GBFS (verified 2026-08-17)
 
@@ -38,30 +39,25 @@ done and verified; don't rewrite it.**
   are UUIDs, so look up the station once and hardcode the id
 - Fields per station: `num_bikes_available`, `num_ebikes_available`, `num_docks_available`
 - **Response is ~240 KB (634 stations)** — too big for the bus-display approach of
-  reading the body into a String. Use ArduinoJson's streaming deserialize from the
-  HTTP Stream with a filter, or scan for the station_id substring. The gzip+BOM
-  quirks of 511 do NOT apply here (plain JSON)
-- GBFS data updates every ~30-60s; poll once a minute is plenty. No rate limit drama
-
-## Adaptation TODO (roughly in order)
-
-1. Ask the user which station (or find nearest via station_information + their
-   address) and hardcode its station_id
-2. Replace `fetchPredictions()`/gunzip/schedule-merge machinery in
-   `bike_display/bike_display.ino` with a GBFS fetch (streaming parse — see above).
-   Delete: `schedule.h`, the RtSched/NVS code, `SCHEDULE_URL`, `parseIso8601Utc`
-   (no timestamps needed), the 511 config. Keep: WiFi/NTP (NTP only if showing a
-   clock; otherwise droppable), render pipeline, refresh cadence logic
-3. New layout in `preview/preview.py` first (pixel-accurate, no flashing needed;
-   harness imported from the crowpanel-epd library; keep `draw_layout_v2` in sync
-   with firmware `render()`). Old composition:
-   badge left / big number / sub-line — likely reusable with a bike glyph instead
-   of the "23" badge and "bikes / e-bikes" split
-4. Refresh behavior: bike counts change more often than bus minutes but matter
-   less per-unit; partial refresh on count change, full every 5 partials (same as
-   bus display) should work unchanged
-5. No CI pipeline needed (no schedule to bake) — `.github/` and `tools/` were
-   already stripped from the copy
+  reading the body into a String. Firmware uses the ArduinoJson
+  "deserialize in chunks" pattern: `useHTTP10(true)` (no chunked framing on the
+  raw stream), `Stream::find()` to the `stations` array, then one small
+  `deserializeJson` per station object until ours turns up. The gzip+BOM quirks
+  of 511 do NOT apply here (plain JSON)
+- **esp32 core 3.3.11 streaming gotcha**: `NetworkClientSecure::read(buf,len)`
+  returns -1 whenever no decrypted bytes are pending (NetworkClientSecure.cpp:273)
+  and `NetworkClient::readBytes` treats r<0 as fatal, so ArduinoJson reading the
+  Stream directly gets a false EOF (`IncompleteInput`) at a random TLS-record
+  boundary ~20-40 stations in. `find()`/`findUntil()` are unaffected (Stream's
+  own `timedRead` loops). Fix: the `PatientReader` custom reader in
+  bike_display.ino, which retries until data arrives / real EOF / 10s
+- Station order in the feed is NOT stable between fetches (ours has shown up at
+  index 222-284) — always scan, never assume position
+- GBFS data updates every ~30-60s; poll once a minute is plenty. No rate limit
+  drama. Whole scan to our station takes <1s
+- The bike badge glyph is generated: `preview/bike_icon.py` freezes the icon to
+  `bike_display/bike_icon.h` and exports the same pixels to preview.py, so both
+  renderers match by construction. Re-run it after editing the drawing
 
 ## Legacy reference
 

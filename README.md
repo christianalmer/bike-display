@@ -6,11 +6,12 @@ nearby station. Sibling project of
 hardware layer: an Elecrow CrowPanel 2.13" e-paper (ESP32-S3) with a vendored
 SSD1680 driver, clean partial refresh, and a pixel-accurate layout preview tool.
 
-**Status: work in progress** — freshly forked from the working bus display;
-the data layer is being adapted from 511 transit predictions to the public
+**Status: working.** Polls the public
 [Bay Wheels GBFS feed](https://gbfs.baywheels.com/gbfs/en/station_status.json)
-(no API key needed). See `CLAUDE.md` for the plan and the accumulated hardware
-knowledge.
+(no API key needed) once a minute for the <station> Ave station and
+shows total bikes big, with the e-bike and open-dock counts below. Partial
+refresh on count changes, full refresh every 5 partials. See `CLAUDE.md` for
+the accumulated hardware knowledge.
 
 ## Building
 
