@@ -12,8 +12,7 @@ crons = ["* * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "baywheels"
-# Filled in after `wrangler d1 create baywheels` (any value works for local dev)
-database_id = "REPLACE_AFTER_D1_CREATE"
+database_id = "9756cf4b-ac42-4a56-9f5a-4ccb21e3bd14"
 
 [observability]
 enabled = true
