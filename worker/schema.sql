@@ -11,3 +11,9 @@ CREATE TABLE IF NOT EXISTS samples (
 );
 
 CREATE INDEX IF NOT EXISTS idx_samples_dow_minute ON samples (dow, minute);
+
+-- Cron heartbeat / last-error, readable at /api/health
+CREATE TABLE IF NOT EXISTS meta (
+  k TEXT PRIMARY KEY,
+  v TEXT
+);

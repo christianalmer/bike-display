@@ -46,6 +46,8 @@ const char* WIFI_PASS = SECRET_WIFI_PASS;
 
 // Public feed, no API key. baywheels.com 301s to gbfs.lyftbikes.com, so
 // redirect-following is enabled in the fetch.
+const char* TRENDS_POLL_URL =
+    "https://baywheels-trends.christian-7ee.workers.dev/api/poll";
 const char* GBFS_STATUS_URL =
     "https://gbfs.baywheels.com/gbfs/en/station_status.json";
 const char* STATION_ID = "<station-id>";  // <station> Ave
@@ -161,6 +163,21 @@ bool fetchStationStatus() {
   return true;
 }
 
+// Stopgap scheduler for the trends logger: Cloudflare's cron triggers are not
+// firing on this account (support ticket pending), so the display kicks the
+// worker's poll endpoint each cycle. Harmless once cron works (same-second
+// writes just overwrite). Fire-and-forget; never blocks the display update.
+void pingTrendsLogger() {
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(8000);
+  if (!http.begin(client, TRENDS_POLL_URL)) return;
+  int code = http.POST("");
+  Serial.printf("Trends ping: HTTP %d\n", code);
+  http.end();
+}
+
 // ======================= RENDER =======================
 // Landscape 250x122: bike badge left, big e-bike count, classic bikes below.
 // Layout constants mirror preview/preview.py draw_layout — keep in sync.
@@ -267,6 +284,7 @@ void setup() {
   if (!fetchStationStatus()) Serial.println("Initial fetch FAILED");
   lastFetchMs = millis();
   updateDisplay(true);
+  pingTrendsLogger();
 }
 
 void loop() {
@@ -275,6 +293,7 @@ void loop() {
     fetchStationStatus();
     lastFetchMs = millis();
     updateDisplay(false);
+    pingTrendsLogger();  // after the display update so the glass never waits
   }
   delay(1000);
 }

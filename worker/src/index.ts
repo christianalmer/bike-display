@@ -98,13 +98,43 @@ function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
+async function setMeta(env: Env, k: string, v: string): Promise<void> {
+  await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)").bind(k, v).run();
+}
+
 export default {
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(samplePoll(env));
+    ctx.waitUntil(
+      (async () => {
+        await setMeta(env, "last_cron", String(Math.floor(Date.now() / 1000)));
+        try {
+          await samplePoll(env);
+          await setMeta(env, "last_cron_ok", String(Math.floor(Date.now() / 1000)));
+        } catch (e) {
+          await setMeta(env, "last_cron_err", new Date().toISOString() + " " + String(e));
+        }
+      })()
+    );
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+
+    if (url.pathname === "/api/health") {
+      const { results } = await env.DB.prepare("SELECT k, v FROM meta").all();
+      const row = await env.DB.prepare("SELECT COUNT(*) AS n, MAX(ts) AS latest FROM samples").first();
+      return json({ meta: results, samples: row });
+    }
+
+    // Debug: run the cron's code path on demand and surface any error
+    if (url.pathname === "/api/poll" && req.method === "POST") {
+      try {
+        await samplePoll(env);
+        return json({ ok: true });
+      } catch (e) {
+        return json({ ok: false, error: String(e) }, 500);
+      }
+    }
 
     if (url.pathname === "/api/now") {
       const row = await env.DB.prepare(
