@@ -1,0 +1,19 @@
+name = "baywheels-trends"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# Serve the trends page from a plain .html file imported as text
+rules = [{ type = "Text", globs = ["**/*.html"], fallthrough = true }]
+
+# Poll GBFS once a minute (matches the feed's ~30-60s update cadence)
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "baywheels"
+# Filled in after `wrangler d1 create baywheels` (any value works for local dev)
+database_id = "REPLACE_AFTER_D1_CREATE"
+
+[observability]
+enabled = true
