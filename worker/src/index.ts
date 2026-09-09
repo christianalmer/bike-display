@@ -7,6 +7,7 @@ import PAGE_HTML from "./page.html";
 
 export interface Env {
   DB: D1Database;
+  SCHEDULER: DurableObjectNamespace;
 }
 
 const STATION_ID = "<station-id>"; // <station-code>
@@ -102,28 +103,60 @@ async function setMeta(env: Env, k: string, v: string): Promise<void> {
   await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)").bind(k, v).run();
 }
 
+// The sampling clock. Cloudflare cron triggers stall for hours on this account,
+// so a self-re-arming Durable Object alarm drives the 1-min sampling instead.
+// Any request to the DO's fetch() arms the alarm if it isn't already set.
+const SAMPLE_MS = 60_000;
+
+export class Scheduler {
+  state: DurableObjectState;
+  env: Env;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch(): Promise<Response> {
+    const current = await this.state.storage.getAlarm();
+    if (current === null) await this.state.storage.setAlarm(Date.now() + 2000);
+    return new Response(JSON.stringify({ alarmWasArmed: current !== null, alarm: current }), {
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  async alarm(): Promise<void> {
+    // Re-arm before sampling so one bad poll can never kill the clock.
+    await this.state.storage.setAlarm(Date.now() + SAMPLE_MS);
+    const now = String(Math.floor(Date.now() / 1000));
+    try {
+      await samplePoll(this.env);
+      await setMeta(this.env, "last_alarm_ok", now);
+    } catch (e) {
+      await setMeta(this.env, "last_alarm_err", new Date().toISOString() + " " + String(e));
+    }
+  }
+}
+
+function ensureScheduler(env: Env): Promise<Response> {
+  return env.SCHEDULER.get(env.SCHEDULER.idFromName("main")).fetch("https://scheduler/ensure");
+}
+
 export default {
+  // Cron is only a backstop now: if it happens to fire, it re-arms the alarm.
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(
-      (async () => {
-        await setMeta(env, "last_cron", String(Math.floor(Date.now() / 1000)));
-        try {
-          await samplePoll(env);
-          await setMeta(env, "last_cron_ok", String(Math.floor(Date.now() / 1000)));
-        } catch (e) {
-          await setMeta(env, "last_cron_err", new Date().toISOString() + " " + String(e));
-        }
-      })()
-    );
+    ctx.waitUntil(ensureScheduler(env));
   },
 
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
+    ctx.waitUntil(ensureScheduler(env));
 
     if (url.pathname === "/api/health") {
       const { results } = await env.DB.prepare("SELECT k, v FROM meta").all();
       const row = await env.DB.prepare("SELECT COUNT(*) AS n, MAX(ts) AS latest FROM samples").first();
-      return json({ meta: results, samples: row });
+      const alarm = await (await ensureScheduler(env)).json();
+      return json({ meta: results, samples: row, scheduler: alarm });
     }
 
     // Debug: run the cron's code path on demand and surface any error

@@ -5,9 +5,19 @@ compatibility_date = "2026-09-01"
 # Serve the trends page from a plain .html file imported as text
 rules = [{ type = "Text", globs = ["**/*.html"], fallthrough = true }]
 
-# Poll GBFS once a minute (matches the feed's ~30-60s update cadence)
+# The real 1-min scheduler is a Durable Object alarm (Scheduler class) —
+# account crons proved unreliable (silent multi-hour stalls). The cron stays
+# only as a backstop that re-arms the alarm if it ever gets lost.
 [triggers]
 crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "SCHEDULER"
+class_name = "Scheduler"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Scheduler"]
 
 [[d1_databases]]
 binding = "DB"
