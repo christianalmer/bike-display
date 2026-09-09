@@ -59,6 +59,7 @@
   .cardhead { display: flex; justify-content: space-between; align-items: start; gap: 12px; flex-wrap: wrap; }
   .legend { display: flex; gap: 16px; align-items: center; color: var(--text-secondary); font-size: 13px; }
   .legend .k { display: inline-block; width: 16px; height: 2px; border-radius: 1px; vertical-align: middle; margin-right: 6px; }
+  .legend .kr { width: 10px; height: 10px; border-radius: 3px; }
   .pills { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .pills button {
     border: 0; background: transparent; color: var(--text-secondary);
@@ -105,10 +106,10 @@
 
   <div class="card">
     <div class="cardhead">
-      <div><h2>Last 48 hours</h2><div class="meta">San Francisco local time</div></div>
+      <div><h2>Last 48 hours</h2><div class="meta">Hourly averages · San Francisco local time</div></div>
       <div class="legend">
-        <span><span class="k" style="background:var(--series-ebike)"></span>E-bikes</span>
-        <span><span class="k" style="background:var(--series-classic)"></span>Classic</span>
+        <span><span class="k kr" style="background:var(--series-ebike)"></span>E-bikes</span>
+        <span><span class="k kr" style="background:var(--series-classic)"></span>Classic</span>
       </div>
     </div>
     <div class="chartbox" id="recent-box"><div class="empty">Loading…</div></div>
@@ -214,10 +215,10 @@ async function loadRecent() {
     box.appendChild(e);
     return;
   }
-  // Average into 10-minute buckets to keep the polyline light
+  // Average into hourly buckets: 48 stacked bars for 48 hours
   const buckets = new Map();
   for (const [ts, eb, cl] of d.samples) {
-    const b = Math.floor(ts / 600) * 600;
+    const b = Math.floor(ts / 3600) * 3600;
     const cur = buckets.get(b) || [0, 0, 0];
     buckets.set(b, [cur[0] + eb, cur[1] + cl, cur[2] + 1]);
   }
@@ -225,12 +226,15 @@ async function loadRecent() {
     .map(([ts, [eb, cl, n]]) => ({ ts, eb: eb / n, cl: cl / n }));
 
   const W = Math.min(box.clientWidth || 820, 900), H = 220;
-  const M = { l: 30, r: 76, t: 12, b: 24 };
-  const x0 = pts[0].ts, x1 = pts[pts.length - 1].ts;
-  const ymax = Math.max(4, ...pts.map((p) => Math.max(p.eb, p.cl)));
+  const M = { l: 30, r: 12, t: 12, b: 24 };
+  const plotW = W - M.l - M.r;
+  const slot = plotW / pts.length;
+  const barW = Math.min(24, Math.max(3, slot - 2)); // ≤24px thick, 2px air per slot
+  const ymax = Math.max(4, ...pts.map((p) => p.eb + p.cl));
   const yTop = Math.ceil(ymax / 2) * 2;
-  const X = (ts) => M.l + ((ts - x0) / (x1 - x0)) * (W - M.l - M.r);
+  const X = (i) => M.l + i * slot + (slot - barW) / 2;
   const Y = (v) => M.t + (1 - v / yTop) * (H - M.t - M.b);
+  const Y0 = Y(0);
 
   const svg = svgel("svg");
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
@@ -251,66 +255,69 @@ async function loadRecent() {
     }
   }
   // x ticks: every 6 hours, SF time
-  const firstTick = Math.ceil(x0 / 21600) * 21600;
-  for (let ts = firstTick; ts <= x1; ts += 21600) {
-    const t = svgel("text");
-    t.setAttribute("x", X(ts)); t.setAttribute("y", H - 6); t.setAttribute("text-anchor", "middle");
-    t.textContent = sfDayHour(ts);
-    svg.appendChild(t);
-  }
-
-  const last = pts[pts.length - 1];
-  // End labels only when the two line-ends are far enough apart to not collide;
-  // otherwise the legend + tooltip carry identity (never stack colliding labels).
-  const endLabels = Math.abs(Y(last.eb) - Y(last.cl)) >= 14;
-  const line = (key, color) => {
-    const p = svgel("polyline");
-    p.setAttribute("points", pts.map((pt) => X(pt.ts).toFixed(1) + "," + Y(pt[key]).toFixed(1)).join(" "));
-    p.setAttribute("fill", "none");
-    p.setAttribute("stroke", color);
-    p.setAttribute("stroke-width", "2");
-    p.setAttribute("stroke-linejoin", "round");
-    p.setAttribute("stroke-linecap", "round");
-    svg.appendChild(p);
-    const dot = svgel("circle");
-    dot.setAttribute("cx", X(last.ts)); dot.setAttribute("cy", Y(last[key])); dot.setAttribute("r", "4");
-    dot.setAttribute("fill", color);
-    dot.setAttribute("stroke", "var(--surface-1)");
-    dot.setAttribute("stroke-width", "2");
-    svg.appendChild(dot);
-    if (endLabels) {
-      const lab = svgel("text");
-      lab.setAttribute("class", "endlabel");
-      lab.setAttribute("x", X(last.ts) + 8);
-      lab.setAttribute("y", Y(last[key]) + 4);
-      lab.textContent = Math.round(last[key]) + (key === "eb" ? " e-bikes" : " classic");
-      svg.appendChild(lab);
+  pts.forEach((p, i) => {
+    if (p.ts % 21600 === 0) {
+      const t = svgel("text");
+      t.setAttribute("x", X(i) + barW / 2); t.setAttribute("y", H - 6); t.setAttribute("text-anchor", "middle");
+      t.textContent = sfDayHour(p.ts);
+      svg.appendChild(t);
     }
-  };
-  line("eb", EBIKE);
-  line("cl", CLASSIC);
-
-  // crosshair + tooltip
-  const cross = svgel("line");
-  cross.setAttribute("y1", M.t); cross.setAttribute("y2", H - M.b);
-  cross.setAttribute("stroke", "var(--axis)"); cross.setAttribute("visibility", "hidden");
-  svg.appendChild(cross);
-  const tt = makeTooltip(box);
-  svg.addEventListener("pointermove", (ev) => {
-    const r = svg.getBoundingClientRect();
-    const mx = ((ev.clientX - r.left) / r.width) * W;
-    const ts = x0 + ((mx - M.l) / (W - M.l - M.r)) * (x1 - x0);
-    let best = pts[0];
-    for (const p of pts) if (Math.abs(p.ts - ts) < Math.abs(best.ts - ts)) best = p;
-    cross.setAttribute("x1", X(best.ts)); cross.setAttribute("x2", X(best.ts));
-    cross.setAttribute("visibility", "visible");
-    tt.show((X(best.ts) / W) * r.width, (Y(Math.max(best.eb, best.cl)) / H) * r.height,
-      sfDayHour(best.ts) + " · " + sfTime(best.ts), [
-        { color: EBIKE, value: String(Math.round(best.eb)), label: "e-bikes" },
-        { color: CLASSIC, value: String(Math.round(best.cl)), label: "classic" },
-      ]);
   });
-  svg.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tt.hide(); });
+
+  // Rounded cap on the top of the stack only; square at the baseline.
+  const capRect = (x, y, w, h, r) => {
+    const p = svgel("path");
+    r = Math.min(r, h, w / 2);
+    p.setAttribute("d",
+      "M" + x + "," + (y + h) + " v" + (-(h - r)) + " q0,-" + r + " " + r + ",-" + r +
+      " h" + (w - 2 * r) + " q" + r + ",0 " + r + "," + r + " v" + (h - r) + " z");
+    return p;
+  };
+
+  const tt = makeTooltip(box);
+  pts.forEach((p, i) => {
+    const x = X(i);
+    const hEb = (p.eb / yTop) * (H - M.t - M.b);
+    const hCl = (p.cl / yTop) * (H - M.t - M.b);
+    const group = [];
+    // e-bikes at the baseline; classic stacked above with a 2px surface gap
+    if (hEb > 0.5) {
+      const top = hCl > 0.5 ? svgel("rect") : capRect(x, Y0 - hEb, barW, hEb, 4);
+      if (hCl > 0.5) {
+        top.setAttribute("x", x); top.setAttribute("y", Y0 - hEb);
+        top.setAttribute("width", barW); top.setAttribute("height", hEb);
+      }
+      top.setAttribute("fill", EBIKE);
+      svg.appendChild(top); group.push(top);
+    }
+    if (hCl > 0.5) {
+      const gap = hEb > 0.5 ? 2 : 0;
+      const h = Math.max(hCl - gap, 1);
+      const seg = capRect(x, Y0 - hEb - gap - h, barW, h, 4);
+      seg.setAttribute("fill", CLASSIC);
+      svg.appendChild(seg); group.push(seg);
+    }
+    // full-slot, full-height hit target (bigger than the marks)
+    const hit = svgel("rect");
+    hit.setAttribute("x", M.l + i * slot); hit.setAttribute("y", M.t);
+    hit.setAttribute("width", slot); hit.setAttribute("height", H - M.t - M.b);
+    hit.setAttribute("fill", "transparent");
+    hit.addEventListener("pointermove", (ev) => {
+      const r = box.getBoundingClientRect();
+      group.forEach((s) => s.setAttribute("opacity", "0.8"));
+      tt.show(ev.clientX - r.left, ev.clientY - r.top,
+        sfDayHour(p.ts) + " · avg", [
+          { color: EBIKE, value: p.eb.toFixed(1), label: "e-bikes" },
+          { color: CLASSIC, value: p.cl.toFixed(1), label: "classic" },
+          { color: "", value: (p.eb + p.cl).toFixed(1), label: "total" },
+        ]);
+    });
+    hit.addEventListener("pointerleave", () => {
+      group.forEach((s) => s.removeAttribute("opacity"));
+      tt.hide();
+    });
+    svg.appendChild(hit);
+  });
   box.appendChild(svg);
 
   // hourly table view
