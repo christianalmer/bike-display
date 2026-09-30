@@ -41,8 +41,35 @@
 
 // ======================= CONFIG =======================
 #include "secrets.h"  // gitignored; copy secrets.h.example and fill in
-const char* WIFI_SSID = SECRET_WIFI_SSID;
-const char* WIFI_PASS = SECRET_WIFI_PASS;
+// WiFi: WIFI_NETWORKS list lives in secrets.h; tried in order until one
+// connects, so the display works at any location whose network is listed.
+const uint32_t WIFI_TRY_MS      = 12000;      // per-network connect attempt
+const uint32_t WIFI_DEAD_MS     = 3 * 60000;  // offline this long -> restart
+uint32_t lastWifiOkMs = 0;
+
+// Cycle through the known networks until one connects. Blocks; the boot
+// splash is already on the glass, and stale-data handling covers drops.
+void connectWifi() {
+  WiFi.mode(WIFI_STA);
+  for (int round = 0;; round++) {
+    for (size_t i = 0; i < sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]); i++) {
+      Serial.printf("WiFi: trying \"%s\"...\n", WIFI_NETWORKS[i].ssid);
+      WiFi.disconnect(true);
+      delay(100);
+      WiFi.begin(WIFI_NETWORKS[i].ssid, WIFI_NETWORKS[i].pass);
+      uint32_t t0 = millis();
+      while (millis() - t0 < WIFI_TRY_MS) {
+        if (WiFi.status() == WL_CONNECTED) {
+          Serial.printf("WiFi connected to \"%s\"\n", WIFI_NETWORKS[i].ssid);
+          lastWifiOkMs = millis();
+          return;
+        }
+        delay(250);
+      }
+    }
+    Serial.printf("WiFi: no known network found (round %d), retrying\n", round + 1);
+  }
+}
 
 // Public feed, no API key. baywheels.com 301s to gbfs.lyftbikes.com, so
 // redirect-following is enabled in the fetch.
@@ -259,10 +286,7 @@ void setup() {
   EPD1680_Sleep();
   Serial.println("Boot splash done");
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) { delay(250); Serial.print("."); }
-  Serial.println("\nWiFi connected");
+  connectWifi();
 
   if (!fetchStationStatus()) Serial.println("Initial fetch FAILED");
   lastFetchMs = millis();
@@ -271,7 +295,18 @@ void setup() {
 
 void loop() {
   if (millis() - lastFetchMs >= FETCH_INTERVAL_MS) {
-    if (WiFi.status() != WL_CONNECTED) WiFi.reconnect();
+    if (WiFi.status() != WL_CONNECTED) {
+      // reconnect() only retries the current network; if we've been dark a
+      // while (e.g. moved to a different location), restart to re-run the
+      // full network list.
+      if (millis() - lastWifiOkMs > WIFI_DEAD_MS) {
+        Serial.println("WiFi dead too long, restarting to rescan networks");
+        ESP.restart();
+      }
+      WiFi.reconnect();
+    } else {
+      lastWifiOkMs = millis();
+    }
     fetchStationStatus();
     lastFetchMs = millis();
     updateDisplay(false);
