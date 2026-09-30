@@ -209,6 +209,53 @@ export default {
       return json({ station: STATION_NAME, weeks, bucketMinutes: 30, cells: results });
     }
 
+    // Per weekday: when do e-bikes first run out in the morning?
+    // "Run out" = first minute of a >=10-min stretch at zero, between 4am and noon.
+    if (url.pathname === "/api/runout") {
+      const weeks = Math.min(Math.max(Number(url.searchParams.get("weeks")) || 8, 1), 26);
+      const since = Math.floor(Date.now() / 1000) - weeks * 7 * 86400;
+      const { results } = await env.DB.prepare(
+        `SELECT ts, dow, minute, ebikes FROM samples
+         WHERE ts >= ? AND dow BETWEEN 1 AND 5 AND minute >= 240 AND minute < 720
+         ORDER BY ts`
+      )
+        .bind(since)
+        .all();
+      const byDay = new Map<number, { dow: number; s: [number, number][] }>();
+      for (const r of results as { ts: number; dow: number; minute: number; ebikes: number }[]) {
+        const key = Math.round((r.ts - r.minute * 60) / 86400); // local-midnight day key
+        if (!byDay.has(key)) byDay.set(key, { dow: r.dow, s: [] });
+        byDay.get(key)!.s.push([r.minute, r.ebikes]);
+      }
+      const perDow: Record<number, { mornings: number; ranOut: number[]; }> = {};
+      for (let d = 1; d <= 5; d++) perDow[d] = { mornings: 0, ranOut: [] };
+      for (const { dow, s } of byDay.values()) {
+        if (s.length < 60) continue; // too little coverage to judge that morning
+        perDow[dow].mornings++;
+        s.sort((a, b) => a[0] - b[0]);
+        let runStart = -1;
+        for (const [m, eb] of s) {
+          if (eb === 0) {
+            if (runStart < 0) runStart = m;
+            if (m - runStart >= 10) { perDow[dow].ranOut.push(runStart); break; }
+          } else runStart = -1;
+        }
+      }
+      const median = (a: number[]) => {
+        const s = [...a].sort((x, y) => x - y);
+        return s.length ? s[Math.floor((s.length - 1) / 2)] : null;
+      };
+      return json({
+        station: STATION_NAME, weeks, windowMinutes: [240, 720],
+        days: [1, 2, 3, 4, 5].map((d) => ({
+          dow: d,
+          mornings: perDow[d].mornings,
+          ranOut: perDow[d].ranOut.length,
+          medianMinute: median(perDow[d].ranOut),
+        })),
+      });
+    }
+
     if (url.pathname === "/") {
       return new Response(PAGE_HTML, {
         headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" },

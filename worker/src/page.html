@@ -80,6 +80,13 @@
   .tooltip .row b { font-size: 13px; }
   .tooltip .row span { color: var(--text-secondary); font-size: 12px; }
   .empty { color: var(--text-muted); padding: 32px 0; text-align: center; }
+  .runout { display: flex; gap: 10px; flex-wrap: wrap; }
+  .runout .day {
+    flex: 1 1 120px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  }
+  .runout .day .d { color: var(--text-secondary); font-size: 13px; }
+  .runout .day .t { font-size: 24px; font-weight: 600; margin: 2px 0; }
+  .runout .day .s { color: var(--text-muted); font-size: 12px; }
   details { margin-top: 10px; }
   summary { color: var(--text-muted); font-size: 12px; cursor: pointer; }
   table { border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
@@ -102,6 +109,13 @@
     <div class="tile"><div class="label"><span class="key" style="background:var(--series-classic)"></span>Classic bikes</div><div class="value" id="v-classic">–</div></div>
     <div class="tile"><div class="label">Open docks</div><div class="value" id="v-docks">–</div></div>
     <div class="tile"><div class="label">Updated</div><div class="value" id="v-updated" style="font-size:18px;line-height:2.1">–</div></div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead">
+      <div><h2>Morning e-bike runout</h2><div class="meta" id="ro-meta">Median first time at zero, weekday mornings</div></div>
+    </div>
+    <div class="runout" id="ro-tiles"><div class="empty">Loading…</div></div>
   </div>
 
   <div class="card">
@@ -201,7 +215,11 @@ async function loadNow() {
   $("v-classic").textContent = d.bikes_total - d.ebikes;
   $("v-docks").textContent = d.docks;
   const mins = Math.round((Date.now() / 1000 - d.ts) / 60);
-  $("v-updated").textContent = mins <= 1 ? "just now" : mins + " min ago";
+  $("v-updated").textContent =
+    mins <= 1 ? "just now" :
+    mins < 120 ? mins + " min ago" :
+    mins < 2880 ? Math.round(mins / 60) + " h ago" :
+    Math.round(mins / 1440) + " days ago";
 }
 
 // ---------- last 48h line chart ----------
@@ -462,7 +480,43 @@ for (const [id, metric] of [["pill-ebikes", "ebikes"], ["pill-classic", "classic
   });
 }
 
-loadNow(); loadRecent(); loadHeatmap();
+// ---------- morning runout tiles ----------
+async function loadRunout() {
+  const d = await (await fetch("/api/runout?weeks=8")).json();
+  $("ro-meta").textContent = "Median first time at zero (10+ min), 4am–noon · last " + d.weeks + " weeks";
+  const box = $("ro-tiles");
+  box.textContent = "";
+  const FULL = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  let any = false;
+  for (const day of d.days) {
+    const tile = el("div", "day");
+    const dn = el("div", "d"); dn.textContent = FULL[day.dow];
+    const t = el("div", "t");
+    const s = el("div", "s");
+    if (day.mornings === 0) {
+      t.textContent = "–";
+      s.textContent = "no data yet";
+    } else if (day.ranOut === 0) {
+      t.textContent = "lasts";
+      s.textContent = "never ran out (" + day.mornings + " mornings)";
+      any = true;
+    } else {
+      t.textContent = day.medianMinute <= 240 ? "<4am" : minuteLabel(day.medianMinute);
+      s.textContent = "ran out " + day.ranOut + " of " + day.mornings + " mornings";
+      any = true;
+    }
+    tile.append(dn, t, s);
+    box.appendChild(tile);
+  }
+  if (!any) {
+    box.textContent = "";
+    const e = el("div", "empty");
+    e.textContent = "Not enough weekday mornings collected yet.";
+    box.appendChild(e);
+  }
+}
+
+loadNow(); loadRecent(); loadHeatmap(); loadRunout();
 setInterval(() => { loadNow(); loadRecent(); }, 60000);
 </script>
 </body>
