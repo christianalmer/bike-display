@@ -9,3 +9,4 @@ bike_display/build/
 preview/*.png
 
 .DS_Store
+worker/.wrangler/
