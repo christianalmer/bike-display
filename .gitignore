@@ -10,3 +10,4 @@ preview/*.png
 
 .DS_Store
 worker/.wrangler/
+worker/.dev.vars

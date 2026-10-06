@@ -8,8 +8,9 @@ SSD1680 driver, clean partial refresh, and a pixel-accurate layout preview tool.
 
 **Status: working.** Polls the public
 [Bay Wheels GBFS feed](https://gbfs.baywheels.com/gbfs/en/station_status.json)
-(no API key needed) once a minute for the <station> Ave station and
-shows total bikes big, with the e-bike and open-dock counts below. Partial
+(no API key needed) once a minute for a configurable station (see
+`secrets.h.example`) and
+shows the e-bike count big, with the classic-bike count below. Partial
 refresh on count changes, full refresh every 5 partials. See `CLAUDE.md` for
 the accumulated hardware knowledge.
 

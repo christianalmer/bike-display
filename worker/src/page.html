@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><station> — Bay Wheels trends</title>
+<title>Bay Wheels trends</title>
 <style>
   :root {
     color-scheme: light;
@@ -100,7 +100,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1><station> Ave</h1>
+    <h1 id="station-name">Bay Wheels station</h1>
     <p>Bay Wheels availability, sampled every minute</p>
   </header>
 
@@ -210,6 +210,10 @@ function makeTooltip(box) {
 // ---------- current status ----------
 async function loadNow() {
   const d = await (await fetch("/api/now")).json();
+  if (d.station) {
+    $("station-name").textContent = d.station;
+    document.title = d.station + " — Bay Wheels trends";
+  }
   if (d.ts == null) return;
   $("v-ebikes").textContent = d.ebikes;
   $("v-classic").textContent = d.bikes_total - d.ebikes;

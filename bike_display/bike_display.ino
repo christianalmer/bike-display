@@ -2,7 +2,7 @@
  * Bay Wheels Bike Availability Display
  * ------------------------------------
  * Elecrow CrowPanel 2.13" e-paper (ESP32-S3) + Bay Wheels GBFS feed
- * Station: <station> Ave (<station-code>)
+ * Station: configured in secrets.h (SECRET_STATION_ID)
  *
  * Behavior:
  *   - Polls the public GBFS station_status feed once per minute
@@ -75,8 +75,8 @@ void connectWifi() {
 // redirect-following is enabled in the fetch.
 const char* GBFS_STATUS_URL =
     "https://gbfs.baywheels.com/gbfs/en/station_status.json";
-const char* STATION_ID = "<station-id>";  // <station> Ave
-const char* STATION_LABEL = "<station>";
+const char* STATION_ID = SECRET_STATION_ID;      // which station: see secrets.h
+const char* STATION_LABEL = SECRET_STATION_LABEL;
 
 const uint32_t FETCH_INTERVAL_MS  = 60UL * 1000UL;      // feed updates every ~30-60s
 const uint32_t STALE_AFTER_MS     = 5UL * 60UL * 1000UL;  // show "No data" past this

@@ -3,8 +3,11 @@
 E-paper desk device showing how many Lyft/Bay Wheels bikes (and e-bikes) are
 available at a nearby station.
 
-**STATUS: working, verified on hardware 2026-08-17.** Station: **<station>** (<station-code>, station_id `<station-id>`),
-hardcoded in `bike_display.ino`. This unit is the older **SSD1680** panel
+**STATUS: working, verified on hardware 2026-08-17.** The station (id + label)
+is configured in gitignored `bike_display/secrets.h` (`SECRET_STATION_ID`,
+`SECRET_STATION_LABEL`); the worker gets it from `STATION_ID`/`STATION_NAME`
+env vars (`wrangler secret put` in prod, `worker/.dev.vars` locally). Keep the
+specific station out of committed files — the repo is public. This unit is the older **SSD1680** panel
 revision (full refresh measured ~2.4s). Forked from bus-display
 (github.com/christianalmer/bus-display); hardware layer is done and verified —
 don't rewrite it.

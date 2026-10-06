@@ -49,7 +49,7 @@ def draw_layout(c: Canvas, ebikes, classic, fetch_ok=True):
         bk = "bike" if classic == 1 else "bikes"
         c.text("FreeSans9pt7b", LEFT, SUB_BASE, f"{classic} {bk}", 1)
     else:
-        c.text("FreeSans9pt7b", LEFT, SUB_BASE, "<station>", 1)
+        c.text("FreeSans9pt7b", LEFT, SUB_BASE, "My Station", 1)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
-// Bay Wheels availability logger + trends site for <station> Ave.
-// Cron (1/min) samples the public GBFS feed into D1; fetch() serves the
-// trends page and a small JSON API (CORS open — the iOS widget will use it).
+// Bay Wheels availability logger + trends site for one station.
+// A Durable Object alarm (1/min) samples the public GBFS feed into D1;
+// fetch() serves the trends page and a small JSON API (CORS open).
+// Which station: STATION_ID / STATION_NAME env vars — `wrangler secret put`
+// in production, .dev.vars (gitignored) for local dev.
 
 // @ts-expect-error - wrangler Text rule imports .html as a string
 import PAGE_HTML from "./page.html";
@@ -8,10 +10,10 @@ import PAGE_HTML from "./page.html";
 export interface Env {
   DB: D1Database;
   SCHEDULER: DurableObjectNamespace;
+  STATION_ID: string;
+  STATION_NAME: string;
 }
 
-const STATION_ID = "<station-id>"; // <station-code>
-const STATION_NAME = "<station> Ave";
 // gbfs.baywheels.com 301s here; go direct.
 const STATUS_URL = "https://gbfs.lyftbikes.com/gbfs/en/station_status.json";
 const TZ = "America/Los_Angeles";
@@ -63,11 +65,11 @@ async function samplePoll(env: Env): Promise<void> {
   const res = await fetch(STATUS_URL);
   if (!res.ok) throw new Error(`GBFS fetch failed: ${res.status}`);
   const text = await res.text();
-  let st = extractStation(text, STATION_ID);
+  let st = extractStation(text, env.STATION_ID);
   if (!st) {
     // Fallback: full parse (paid-plan CPU handles it; free plan usually does too)
     const data = JSON.parse(text) as { data?: { stations?: Record<string, unknown>[] } };
-    st = data.data?.stations?.find((s) => s.station_id === STATION_ID) ?? null;
+    st = data.data?.stations?.find((s) => s.station_id === env.STATION_ID) ?? null;
   }
   if (!st) throw new Error("station not found in feed");
 
@@ -173,7 +175,7 @@ export default {
       const row = await env.DB.prepare(
         "SELECT ts, bikes_total, ebikes, docks FROM samples ORDER BY ts DESC LIMIT 1"
       ).first();
-      return json({ station: STATION_NAME, ...(row ?? { ts: null }) });
+      return json({ station: env.STATION_NAME, ...(row ?? { ts: null }) });
     }
 
     if (url.pathname === "/api/recent") {
@@ -186,7 +188,7 @@ export default {
         .all();
       // Compact arrays: [ts, ebikes, classic]
       return json({
-        station: STATION_NAME,
+        station: env.STATION_NAME,
         samples: (results as { ts: number; bikes_total: number; ebikes: number }[]).map(
           (r) => [r.ts, r.ebikes, r.bikes_total - r.ebikes]
         ),
@@ -206,7 +208,7 @@ export default {
       )
         .bind(since)
         .all();
-      return json({ station: STATION_NAME, weeks, bucketMinutes: 30, cells: results });
+      return json({ station: env.STATION_NAME, weeks, bucketMinutes: 30, cells: results });
     }
 
     // Per weekday: when do e-bikes first run out in the morning?
@@ -246,7 +248,7 @@ export default {
         return s.length ? s[Math.floor((s.length - 1) / 2)] : null;
       };
       return json({
-        station: STATION_NAME, weeks, windowMinutes: [240, 720],
+        station: env.STATION_NAME, weeks, windowMinutes: [240, 720],
         days: [1, 2, 3, 4, 5].map((d) => ({
           dow: d,
           mornings: perDow[d].mornings,
